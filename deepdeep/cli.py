@@ -35,7 +35,7 @@ def save_image(image: np.ndarray, output_path: str):
         sys.exit(1)
 
 
-def process_image(image_path: str, mode: str, output_path: str, interactive: bool = False, quality: str = 'medium', save_intermediate: bool = False, single_object: bool = False):
+def process_image(image_path: str, mode: str, output_path: str, interactive: bool = False, quality: str = 'medium', save_intermediate: bool = False, single_object: bool = False, dithering: str = 'none'):
     """Process a single image through the SpectrumAI pipeline."""
     print(f"Processing {image_path} in {mode} mode...")
     
@@ -79,7 +79,7 @@ def process_image(image_path: str, mode: str, output_path: str, interactive: boo
         if interactive:
             from .utils.interactive import InteractiveHandler
             search_config['interactive_handler'] = InteractiveHandler()
-            print("🎛️  Interactive mode enabled - Press ESC during search for menu")
+            print("🎛️  Interactive mode enabled - Press 'm' or create 'menu.trigger' file for menu")
         
         results = explorer.explore_transformations(image, search_config=search_config, fine_grain_level=quality)
         
@@ -88,7 +88,13 @@ def process_image(image_path: str, mode: str, output_path: str, interactive: boo
             
             # Generate both outputs
             transformed_original = best_result.transformed_image
-            zx_quantized = evaluator._quantize_to_palette(transformed_original)
+            
+            # Apply dithering if requested
+            use_dithering = dithering != 'none'
+            if use_dithering:
+                print(f"🎨 Applying {dithering} dithering...")
+            
+            zx_quantized = evaluator._quantize_to_palette(transformed_original, use_dithering, dithering)
             
             # Save transformed original (shows geometric transformation)
             base_path = output_path.replace('.png', '')
@@ -107,7 +113,10 @@ def process_image(image_path: str, mode: str, output_path: str, interactive: boo
             print(f"Quality score: {best_result.quality_score:.3f}")
         else:
             print("No improvements found, saving quantized original")
-            zx_quantized = evaluator._quantize_to_palette(image)
+            use_dithering = dithering != 'none'
+            if use_dithering:
+                print(f"🎨 Applying {dithering} dithering...")
+            zx_quantized = evaluator._quantize_to_palette(image, use_dithering, dithering)
             save_image(zx_quantized, output_path)
         
         return
@@ -137,7 +146,10 @@ def process_image(image_path: str, mode: str, output_path: str, interactive: boo
     
     # Generate both outputs for recomposed result
     recomposed_original = result.canvas
-    recomposed_zx = evaluator._quantize_to_palette(recomposed_original)
+    use_dithering = dithering != 'none'
+    if use_dithering:
+        print(f"🎨 Applying {dithering} dithering to recomposed result...")
+    recomposed_zx = evaluator._quantize_to_palette(recomposed_original, use_dithering, dithering)
     
     # Save transformed recomposition (shows object transformations)
     base_path = output_path.replace('.png', '')
@@ -223,8 +235,10 @@ def main():
                        help="Save intermediate search results (coarse, fine, etc.) to disk")
     parser.add_argument("--single-object", action="store_true",
                        help="Skip object detection and process entire image as single object (faster)")
+    parser.add_argument("--dithering", "-d", choices=["none", "floyd_steinberg", "ordered", "random", "blue_noise", "sierra", "atkinson"],
+                       default="none", help="Dithering method for better color mixing and transitions")
     parser.add_argument("--interactive", action="store_true", 
-                       help="Enable interactive mode - press ESC during search for menu")
+                       help="Enable interactive mode - press 'm' or create 'menu.trigger' file during search")
     parser.add_argument("--demo", action="store_true", 
                        help="Run demo with generated test image")
     
@@ -248,7 +262,7 @@ def main():
         print(f"Error: Input file {args.input} does not exist")
         sys.exit(1)
     
-    process_image(args.input, args.mode, args.output, args.interactive, args.quality, args.save_intermediate, args.single_object)
+    process_image(args.input, args.mode, args.output, args.interactive, args.quality, args.save_intermediate, args.single_object, args.dithering)
 
 
 if __name__ == "__main__":

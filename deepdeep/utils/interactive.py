@@ -42,16 +42,25 @@ class InteractiveHandler:
             except:
                 pass
     
-    def check_for_escape(self) -> Optional[InteractiveChoice]:
-        """Check if ESC was pressed and show interactive menu."""
+    def check_for_interactive_trigger(self) -> Optional[InteractiveChoice]:
+        """Check for interactive trigger (file-based or key-based)."""
+        import os
+        
+        # Check for trigger file (more reliable)
+        if os.path.exists('menu.trigger'):
+            os.remove('menu.trigger')  # Remove trigger file
+            return self._show_interactive_menu()
+            
         if not self.enabled or not sys.stdin.isatty():
             return None
             
         # Check if input is available (non-blocking)
         if select.select([sys.stdin], [], [], 0) == ([sys.stdin], [], []):
             try:
+                # Simple single character check
                 char = sys.stdin.read(1)
-                if ord(char) == 27:  # ESC key
+                # Check for common trigger characters
+                if char.lower() in ['m', 'i', '?']:  # m=menu, i=interactive, ?=help
                     return self._show_interactive_menu()
             except:
                 pass
@@ -72,6 +81,7 @@ class InteractiveHandler:
         print("  [x] Exit and save current best results")
         print("  [k] Skip current phase")
         print("="*50)
+        print("💡 Tip: During search, create file 'menu.trigger' to open this menu")
         
         while True:
             try:

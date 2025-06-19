@@ -171,8 +171,29 @@ class ConstraintEvaluator:
         
         return min(violation, 2.0)  # Cap at 2.0
     
-    def _quantize_to_palette(self, image: np.ndarray) -> np.ndarray:
-        """Quantize image to ZX Spectrum palette."""
+    def _quantize_to_palette(self, image: np.ndarray, use_dithering: bool = False, dithering_method: str = 'floyd_steinberg') -> np.ndarray:
+        """Quantize image to ZX Spectrum palette with optional dithering."""
+        if use_dithering:
+            try:
+                from ...utils.dithering import ZXDithering, DitheringMethod
+                ditherer = ZXDithering()
+                
+                # Map string to enum
+                method_map = {
+                    'floyd_steinberg': DitheringMethod.FLOYD_STEINBERG,
+                    'ordered': DitheringMethod.ORDERED, 
+                    'random': DitheringMethod.RANDOM,
+                    'blue_noise': DitheringMethod.BLUE_NOISE,
+                    'sierra': DitheringMethod.SIERRA,
+                    'atkinson': DitheringMethod.ATKINSON
+                }
+                
+                method = method_map.get(dithering_method, DitheringMethod.FLOYD_STEINBERG)
+                return ditherer.apply_dithering(image, method)
+            except ImportError:
+                print("⚠️  Dithering module not available, falling back to nearest neighbor")
+        
+        # Original nearest neighbor quantization
         h, w = image.shape[:2]
         image_flat = image.reshape(-1, 3).astype(np.float32)
         

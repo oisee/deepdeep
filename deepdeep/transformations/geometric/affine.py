@@ -7,6 +7,7 @@ from typing import Tuple, Optional
 import numpy as np
 import cv2
 import math
+from ..advanced.algorithms import AdvancedTransforms, ZXSpectrumEffects
 
 
 @dataclass
@@ -15,8 +16,7 @@ class TransformParams:
     
     # Affine transformations
     rotation: float = 0.0          # degrees, -180 to 180
-    scale_x: float = 1.0           # 0.5 to 2.0
-    scale_y: float = 1.0           # 0.5 to 2.0
+    scale: float = 1.0             # 0.5 to 2.0 (proportional scaling only)
     translate_x: float = 0.0       # pixels, -image_width to image_width
     translate_y: float = 0.0       # pixels, -image_height to image_height
     shear_x: float = 0.0           # degrees, -45 to 45
@@ -34,12 +34,17 @@ class TransformParams:
     wave_amp_y: float = 0.0        # 0 to 10 (wave amplitude Y)
     wave_freq_y: float = 0.0       # 0 to 0.1 (wave frequency Y)
     
+    # Advanced effects
+    spherical_strength: float = 0.0    # 0 to 1.0 (spherical warp strength)
+    twist_angle: float = 0.0           # -π to π (twist/spiral effect)
+    ripple_amplitude: float = 0.0      # 0 to 20 (ripple effect amplitude)
+    ripple_frequency: float = 0.0      # 0 to 0.5 (ripple frequency)
+    
     def is_identity(self) -> bool:
         """Check if parameters represent identity transformation."""
         return (
             abs(self.rotation) < 1e-6 and
-            abs(self.scale_x - 1.0) < 1e-6 and
-            abs(self.scale_y - 1.0) < 1e-6 and
+            abs(self.scale - 1.0) < 1e-6 and
             abs(self.translate_x) < 1e-6 and
             abs(self.translate_y) < 1e-6 and
             abs(self.shear_x) < 1e-6 and
@@ -49,7 +54,11 @@ class TransformParams:
             abs(self.barrel_k1) < 1e-6 and
             abs(self.barrel_k2) < 1e-6 and
             abs(self.wave_amp_x) < 1e-6 and
-            abs(self.wave_amp_y) < 1e-6
+            abs(self.wave_amp_y) < 1e-6 and
+            abs(self.spherical_strength) < 1e-6 and
+            abs(self.twist_angle) < 1e-6 and
+            abs(self.ripple_amplitude) < 1e-6 and
+            abs(self.ripple_frequency) < 1e-6
         )
     
     def copy(self) -> 'TransformParams':
@@ -79,6 +88,8 @@ class TransformationEngine:
     def __init__(self):
         self.interpolation_mode = cv2.INTER_LINEAR
         self.border_mode = cv2.BORDER_REFLECT_101
+        self.advanced_transforms = AdvancedTransforms()
+        self.zx_effects = ZXSpectrumEffects()
     
     def apply_transform(self, 
                        image: np.ndarray, 
@@ -128,14 +139,17 @@ class TransformationEngine:
         if self._has_wave(params):
             result = self._apply_wave_distortion(result, params)
         
+        # Apply advanced effects
+        if self._has_advanced_effects(params):
+            result = self._apply_advanced_effects(result, params)
+        
         return result
     
     def _has_affine(self, params: TransformParams) -> bool:
         """Check if any affine transformations are needed."""
         return not (
             abs(params.rotation) < 1e-6 and
-            abs(params.scale_x - 1.0) < 1e-6 and
-            abs(params.scale_y - 1.0) < 1e-6 and
+            abs(params.scale - 1.0) < 1e-6 and
             abs(params.translate_x) < 1e-6 and
             abs(params.translate_y) < 1e-6 and
             abs(params.shear_x) < 1e-6 and
@@ -154,6 +168,12 @@ class TransformationEngine:
         """Check if wave distortion is needed."""
         return (abs(params.wave_amp_x) > 1e-6 or 
                 abs(params.wave_amp_y) > 1e-6)
+    
+    def _has_advanced_effects(self, params: TransformParams) -> bool:
+        """Check if advanced effects are needed."""
+        return (abs(params.spherical_strength) > 1e-6 or
+                abs(params.twist_angle) > 1e-6 or
+                abs(params.ripple_amplitude) > 1e-6)
     
     def _build_affine_matrix(self, params: TransformParams, shape: Tuple[int, ...]) -> np.ndarray:
         """Build 2x3 affine transformation matrix."""
@@ -181,11 +201,11 @@ class TransformationEngine:
             ], dtype=np.float32)
             M = M_rot @ M
         
-        # Scale
-        if abs(params.scale_x - 1.0) > 1e-6 or abs(params.scale_y - 1.0) > 1e-6:
+        # Scale (proportional)
+        if abs(params.scale - 1.0) > 1e-6:
             M_scale = np.array([
-                [params.scale_x, 0, 0],
-                [0, params.scale_y, 0],
+                [params.scale, 0, 0],
+                [0, params.scale, 0],
                 [0, 0, 1]
             ], dtype=np.float32)
             M = M_scale @ M
@@ -351,3 +371,23 @@ class TransformationEngine:
         min_y, max_y = int(np.floor(y_coords.min())), int(np.ceil(y_coords.max()))
         
         return (min_x, min_y), (max_x, max_y)
+    
+    def _apply_advanced_effects(self, image: np.ndarray, params: TransformParams) -> np.ndarray:
+        """Apply advanced transformation effects."""
+        result = image.copy()
+        
+        # Apply spherical warp
+        if abs(params.spherical_strength) > 1e-6:
+            result = self.advanced_transforms.apply_spherical_warp(result, params.spherical_strength)
+        
+        # Apply twist effect
+        if abs(params.twist_angle) > 1e-6:
+            result = self.advanced_transforms.apply_twist_warp(result, params.twist_angle)
+        
+        # Apply ripple effect
+        if abs(params.ripple_amplitude) > 1e-6:
+            result = self.advanced_transforms.apply_ripple_effect(
+                result, params.ripple_amplitude, params.ripple_frequency
+            )
+        
+        return result

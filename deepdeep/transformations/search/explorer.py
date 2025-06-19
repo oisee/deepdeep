@@ -263,11 +263,10 @@ class TransformationExplorer:
             config.get('rotation_range', (-15, 15)),
             config.get('rotation_step', 5)
         )
-        scales_x = self._generate_range(
+        scales = self._generate_range(
             config.get('scale_range', (0.8, 1.2)),
             config.get('scale_step', 0.1)
         )
-        scales_y = scales_x  # Keep aspect ratio for coarse search
         
         translates_x = self._generate_range(
             config.get('translate_range', (-20, 20)),
@@ -282,7 +281,7 @@ class TransformationExplorer:
         max_combinations = config.get('max_combinations', 1000)
         
         param_combinations = list(itertools.product(
-            rotations, scales_x, scales_y, translates_x, translates_y
+            rotations, scales, translates_x, translates_y
         ))
         
         # Limit combinations if too many
@@ -301,10 +300,10 @@ class TransformationExplorer:
         # Get interactive handler if configured
         interactive_handler = config.get('interactive_handler')
         
-        for rot, sx, sy, tx, ty in param_combinations_progress:
-            # Check for ESC key press
+        for rot, scale, tx, ty in param_combinations_progress:
+            # Check for interactive trigger
             if interactive_handler:
-                choice = interactive_handler.check_for_escape()
+                choice = interactive_handler.check_for_interactive_trigger()
                 if choice == InteractiveChoice.EXIT:
                     print(f"\n🚪 User requested exit from coarse search. Saving {len(results)} results...")
                     break
@@ -317,8 +316,7 @@ class TransformationExplorer:
             
             params = TransformParams(
                 rotation=rot,
-                scale_x=sx,
-                scale_y=sy,
+                scale=scale,
                 translate_x=tx,
                 translate_y=ty
             )
@@ -361,9 +359,9 @@ class TransformationExplorer:
         processed_count = 0
         for params in fine_params_progress:
             try:
-                # Check for ESC key press
+                # Check for interactive trigger
                 if interactive_handler:
-                    choice = interactive_handler.check_for_escape()
+                    choice = interactive_handler.check_for_interactive_trigger()
                     if choice == InteractiveChoice.EXIT:
                         print(f"\n🚪 User requested exit from fine search after {processed_count}/{len(all_fine_params)} variations!")
                         break
@@ -457,8 +455,7 @@ class TransformationExplorer:
                     for trans_y_delta in range(-radius, radius + 1):
                         params = base_params.copy()
                         params.rotation += rot_delta * rot_step
-                        params.scale_x += scale_delta * scale_step
-                        params.scale_y += scale_delta * scale_step  # Keep aspect ratio
+                        params.scale += scale_delta * scale_step
                         params.translate_x += trans_x_delta * trans_step
                         params.translate_y += trans_y_delta * trans_step
                         
@@ -506,8 +503,7 @@ class TransformationExplorer:
         constraints = {
             'face': {
                 'rotation': (-5, 5),        # Minimal rotation for faces  
-                'scale_x': (0.8, 1.2),      # Max 20% scaling for faces/persons
-                'scale_y': (0.8, 1.2),      # Max 20% scaling for faces/persons
+                'scale': (0.8, 1.2),        # Max 20% scaling for faces/persons
                 'translate_x': (-10, 10),   # Limited translation
                 'translate_y': (-10, 10),
                 'shear_x': (0, 0),          # No shear
@@ -517,8 +513,7 @@ class TransformationExplorer:
             },
             'person': {
                 'rotation': (-8, 8),        # Slightly more rotation than faces
-                'scale_x': (0.8, 1.2),      # Max 20% scaling for faces/persons  
-                'scale_y': (0.8, 1.2),      # Max 20% scaling for faces/persons
+                'scale': (0.8, 1.2),        # Max 20% scaling for faces/persons
                 'translate_x': (-15, 15),   
                 'translate_y': (-15, 15),
                 'shear_x': (-2, 2),         # Minimal shear
@@ -528,8 +523,7 @@ class TransformationExplorer:
             },
             'text': {
                 'rotation': (-2, 2),        # Almost no rotation
-                'scale_x': (0.95, 1.05),    # Very minimal scaling for readability
-                'scale_y': (0.95, 1.05),
+                'scale': (0.95, 1.05),      # Very minimal scaling for readability
                 'translate_x': (-5, 5),
                 'translate_y': (-5, 5),
                 'shear_x': (0, 0),          # No shear for readability
@@ -539,8 +533,7 @@ class TransformationExplorer:
             },
             'sprite': {
                 'rotation': (-15, 15),      # Some rotation OK
-                'scale_x': (0.8, 1.2),      # Moderate scaling
-                'scale_y': (0.8, 1.2),
+                'scale': (0.8, 1.2),        # Moderate scaling
                 'translate_x': (-20, 20),
                 'translate_y': (-20, 20),
                 'shear_x': (-5, 5),
@@ -550,8 +543,7 @@ class TransformationExplorer:
             },
             'abstract': {
                 'rotation': (-30, 30),      # More artistic freedom
-                'scale_x': (0.5, 1.5),      # Up to 50% scaling for abstract objects
-                'scale_y': (0.5, 1.5),      # Up to 50% scaling for abstract objects
+                'scale': (0.5, 1.5),        # Up to 50% scaling for abstract objects
                 'translate_x': (-40, 40),
                 'translate_y': (-40, 40),
                 'shear_x': (-10, 10),
@@ -563,8 +555,7 @@ class TransformationExplorer:
             },
             'background': {
                 'rotation': (-30, 30),      # Full artistic freedom
-                'scale_x': (0.5, 1.5),      # Up to 50% scaling for backgrounds
-                'scale_y': (0.5, 1.5),      # Up to 50% scaling for backgrounds
+                'scale': (0.5, 1.5),        # Up to 50% scaling for backgrounds
                 'translate_x': (-50, 50),
                 'translate_y': (-50, 50),
                 'shear_x': (-15, 15),
@@ -614,8 +605,7 @@ class TransformationExplorer:
                     f.write(f"Constraint Violation: {result.constraint_violation:.6f}\n")
                     f.write(f"Transformation Parameters:\n")
                     f.write(f"  Rotation: {result.params.rotation:.2f}°\n")
-                    f.write(f"  Scale X: {result.params.scale_x:.3f}\n")
-                    f.write(f"  Scale Y: {result.params.scale_y:.3f}\n")
+                    f.write(f"  Scale: {result.params.scale:.3f}\n")
                     f.write(f"  Translate X: {result.params.translate_x:.1f}px\n")
                     f.write(f"  Translate Y: {result.params.translate_y:.1f}px\n")
                     if abs(result.params.shear_x) > 1e-6:
@@ -643,7 +633,7 @@ class TransformationExplorer:
                     f.write(f"{i+1:2d}. Score: {result.score:.6f}, "
                            f"Quality: {result.quality_score:.3f}, "
                            f"Rotation: {result.params.rotation:+6.1f}°, "
-                           f"Scale: {result.params.scale_x:.2f}x\n")
+                           f"Scale: {result.params.scale:.2f}x\n")
             
             print(f"✅ Saved results to {output_dir}/ (best score: {sorted_results[0].score:.3f})")
             
