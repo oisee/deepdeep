@@ -9,6 +9,7 @@ import itertools
 import time
 from ..geometric.affine import TransformParams, TransformationEngine
 from .constraints import ConstraintEvaluator
+from ...utils.interactive import InteractiveHandler, InteractiveChoice
 
 try:
     from tqdm import tqdm
@@ -80,27 +81,61 @@ class TransformationExplorer:
         
         # Phase 1: Coarse grid search
         print("Phase 1: Coarse search...")
-        coarse_results = self._coarse_search(image, search_config.get('coarse', {}))
-        results.extend(coarse_results)
+        try:
+            coarse_results = self._coarse_search(image, search_config.get('coarse', {}))
+            results.extend(coarse_results)
+            
+            # Save intermediate coarse results
+            if search_config.get('save_intermediate', False):
+                self._save_intermediate_results(coarse_results, "coarse", search_config.get('output_prefix', 'intermediate'))
+                
+        except KeyboardInterrupt:
+            print(f"\n⚠️  Coarse search interrupted! Saving {len(results)} results found so far...")
+            if results:
+                self._save_intermediate_results(results, "coarse_interrupted", search_config.get('output_prefix', 'interrupted'))
+            return sorted(results)[:search_config.get('max_results', 50)]
         
         # Phase 2: Fine-tune around best results
         if search_config.get('enable_fine_search', True):
             print("Phase 2: Fine search...")
-            fine_results = self._fine_search(
-                image, 
-                coarse_results[:search_config.get('fine_candidates', 10)],
-                search_config.get('fine', {})
-            )
-            results.extend(fine_results)
+            try:
+                fine_results = self._fine_search(
+                    image, 
+                    coarse_results[:search_config.get('fine_candidates', 10)],
+                    search_config.get('fine', {}),
+                    search_config  # Pass config for interruption handling
+                )
+                results.extend(fine_results)
+                
+                # Save intermediate fine results
+                if search_config.get('save_intermediate', False):
+                    self._save_intermediate_results(fine_results, "fine", search_config.get('output_prefix', 'intermediate'))
+                    
+            except KeyboardInterrupt:
+                print(f"\n⚠️  Fine search interrupted! Saving {len(results)} results found so far...")
+                if results:
+                    self._save_intermediate_results(results, "fine_interrupted", search_config.get('output_prefix', 'interrupted'))
+                return sorted(results)[:search_config.get('max_results', 50)]
         
         # Phase 3: Try non-linear on best affine results
         if search_config.get('enable_nonlinear', True):
             print("Phase 3: Non-linear search...")
-            nonlinear_results = self._explore_nonlinear(
-                image,
-                sorted(results)[:search_config.get('nonlinear_candidates', 5)]
-            )
-            results.extend(nonlinear_results)
+            try:
+                nonlinear_results = self._explore_nonlinear(
+                    image,
+                    sorted(results)[:search_config.get('nonlinear_candidates', 5)]
+                )
+                results.extend(nonlinear_results)
+                
+                # Save intermediate nonlinear results
+                if search_config.get('save_intermediate', False):
+                    self._save_intermediate_results(nonlinear_results, "nonlinear", search_config.get('output_prefix', 'intermediate'))
+                    
+            except KeyboardInterrupt:
+                print(f"\n⚠️  Non-linear search interrupted! Saving {len(results)} results found so far...")
+                if results:
+                    self._save_intermediate_results(results, "nonlinear_interrupted", search_config.get('output_prefix', 'interrupted'))
+                return sorted(results)[:search_config.get('max_results', 50)]
         
         # Sort and return best results
         results.sort()
@@ -130,7 +165,7 @@ class TransformationExplorer:
                 'enable_fine_search': True,
                 'enable_nonlinear': False,
                 'max_results': 25,
-                'fine_candidates': 5,
+                'fine_candidates': 3,  # Reduced from 5
                 'coarse': {
                     'rotation_step': 5,
                     'scale_step': 0.1,
@@ -138,10 +173,10 @@ class TransformationExplorer:
                     'max_combinations': 50
                 },
                 'fine': {
-                    'rotation_step': 2,
-                    'scale_step': 0.05,
-                    'translate_step': 4,
-                    'search_radius': 2,
+                    'rotation_step': 3,      # Increased from 2
+                    'scale_step': 0.08,      # Increased from 0.05
+                    'translate_step': 6,     # Increased from 4
+                    'search_radius': 1,      # Reduced from 2 - this is key!
                 }
             },
             'fine': {
@@ -256,14 +291,30 @@ class TransformationExplorer:
             indices = np.linspace(0, len(param_combinations) - 1, max_combinations, dtype=int)
             param_combinations = [param_combinations[i] for i in indices]
         
-        # Evaluate each combination with progress bar
+        # Evaluate each combination with progress bar and interactive handling
         param_combinations_progress = tqdm(
             param_combinations, 
             desc=f"Coarse search ({len(param_combinations)} combinations)",
             disable=len(param_combinations) < 10
         )
         
+        # Get interactive handler if configured
+        interactive_handler = config.get('interactive_handler')
+        
         for rot, sx, sy, tx, ty in param_combinations_progress:
+            # Check for ESC key press
+            if interactive_handler:
+                choice = interactive_handler.check_for_escape()
+                if choice == InteractiveChoice.EXIT:
+                    print(f"\n🚪 User requested exit from coarse search. Saving {len(results)} results...")
+                    break
+                elif choice == InteractiveChoice.SKIP_PHASE:
+                    print(f"\n⏭️  User requested skip coarse phase. Saving {len(results)} results...")
+                    break
+                elif choice == InteractiveChoice.SAVE_INTERMEDIATE:
+                    if results:
+                        self._save_intermediate_results(sorted(results)[:10], "coarse_manual", config.get('output_prefix', 'manual'))
+            
             params = TransformParams(
                 rotation=rot,
                 scale_x=sx,
@@ -283,7 +334,8 @@ class TransformationExplorer:
     def _fine_search(self, 
                     image: np.ndarray,
                     coarse_results: List[TransformationResult],
-                    config: Dict[str, Any]) -> List[TransformationResult]:
+                    config: Dict[str, Any],
+                    search_config: Optional[Dict[str, Any]] = None) -> List[TransformationResult]:
         """Fine search around best coarse results."""
         results = []
         
@@ -296,17 +348,49 @@ class TransformationExplorer:
             fine_params = self._generate_fine_variations(base_params, config, radius)
             all_fine_params.extend(fine_params)
         
-        # Process with progress bar
+        # Process with progress bar and interruption handling
         fine_params_progress = tqdm(
             all_fine_params, 
             desc=f"Fine search ({len(all_fine_params)} variations)",
             disable=len(all_fine_params) < 10
         )
         
+        # Get interactive handler if configured
+        interactive_handler = search_config.get('interactive_handler') if search_config else None
+        
+        processed_count = 0
         for params in fine_params_progress:
-            result = self._evaluate_transformation(image, params)
-            if result is not None:
-                results.append(result)
+            try:
+                # Check for ESC key press
+                if interactive_handler:
+                    choice = interactive_handler.check_for_escape()
+                    if choice == InteractiveChoice.EXIT:
+                        print(f"\n🚪 User requested exit from fine search after {processed_count}/{len(all_fine_params)} variations!")
+                        break
+                    elif choice == InteractiveChoice.SKIP_PHASE:
+                        print(f"\n⏭️  User requested skip fine phase after {processed_count}/{len(all_fine_params)} variations!")
+                        break
+                    elif choice == InteractiveChoice.SAVE_INTERMEDIATE:
+                        if results:
+                            self._save_intermediate_results(sorted(results)[:10], "fine_manual", search_config.get('output_prefix', 'manual'))
+                
+                result = self._evaluate_transformation(image, params)
+                if result is not None:
+                    results.append(result)
+                processed_count += 1
+                
+                # Save intermediate results every 50 iterations if configured
+                if (search_config and search_config.get('save_intermediate', False) and 
+                    processed_count % 50 == 0 and results):
+                    self._save_intermediate_results(
+                        sorted(results)[:10], 
+                        f"fine_checkpoint_{processed_count}", 
+                        search_config.get('output_prefix', 'checkpoint')
+                    )
+                    
+            except KeyboardInterrupt:
+                print(f"\n⚠️  Ctrl+C: Fine search interrupted after {processed_count}/{len(all_fine_params)} variations!")
+                break
         
         return results
     
@@ -421,9 +505,9 @@ class TransformationExplorer:
         """Get transformation constraints for different object types."""
         constraints = {
             'face': {
-                'rotation': (-5, 5),        # Minimal rotation for faces
-                'scale_x': (0.9, 1.1),      # Minimal scaling
-                'scale_y': (0.9, 1.1),
+                'rotation': (-5, 5),        # Minimal rotation for faces  
+                'scale_x': (0.8, 1.2),      # Max 20% scaling for faces/persons
+                'scale_y': (0.8, 1.2),      # Max 20% scaling for faces/persons
                 'translate_x': (-10, 10),   # Limited translation
                 'translate_y': (-10, 10),
                 'shear_x': (0, 0),          # No shear
@@ -431,9 +515,20 @@ class TransformationExplorer:
                 'perspective_x': (0, 0),    # No perspective
                 'perspective_y': (0, 0),
             },
+            'person': {
+                'rotation': (-8, 8),        # Slightly more rotation than faces
+                'scale_x': (0.8, 1.2),      # Max 20% scaling for faces/persons  
+                'scale_y': (0.8, 1.2),      # Max 20% scaling for faces/persons
+                'translate_x': (-15, 15),   
+                'translate_y': (-15, 15),
+                'shear_x': (-2, 2),         # Minimal shear
+                'shear_y': (-2, 2),
+                'perspective_x': (0, 0),    # No perspective
+                'perspective_y': (0, 0),
+            },
             'text': {
                 'rotation': (-2, 2),        # Almost no rotation
-                'scale_x': (0.95, 1.05),    # Very minimal scaling
+                'scale_x': (0.95, 1.05),    # Very minimal scaling for readability
                 'scale_y': (0.95, 1.05),
                 'translate_x': (-5, 5),
                 'translate_y': (-5, 5),
@@ -444,7 +539,7 @@ class TransformationExplorer:
             },
             'sprite': {
                 'rotation': (-15, 15),      # Some rotation OK
-                'scale_x': (0.8, 1.2),      # More scaling freedom
+                'scale_x': (0.8, 1.2),      # Moderate scaling
                 'scale_y': (0.8, 1.2),
                 'translate_x': (-20, 20),
                 'translate_y': (-20, 20),
@@ -453,10 +548,23 @@ class TransformationExplorer:
                 'perspective_x': (-0.001, 0.001),  # Slight perspective OK
                 'perspective_y': (-0.001, 0.001),
             },
+            'abstract': {
+                'rotation': (-30, 30),      # More artistic freedom
+                'scale_x': (0.5, 1.5),      # Up to 50% scaling for abstract objects
+                'scale_y': (0.5, 1.5),      # Up to 50% scaling for abstract objects
+                'translate_x': (-40, 40),
+                'translate_y': (-40, 40),
+                'shear_x': (-10, 10),
+                'shear_y': (-10, 10),
+                'perspective_x': (-0.002, 0.002),
+                'perspective_y': (-0.002, 0.002),
+                'barrel_k1': (-0.15, 0.15),
+                'barrel_k2': (-0.1, 0.1),
+            },
             'background': {
-                'rotation': (-30, 30),      # More freedom
-                'scale_x': (0.5, 1.5),      # Can scale more
-                'scale_y': (0.5, 1.5),
+                'rotation': (-30, 30),      # Full artistic freedom
+                'scale_x': (0.5, 1.5),      # Up to 50% scaling for backgrounds
+                'scale_y': (0.5, 1.5),      # Up to 50% scaling for backgrounds
                 'translate_x': (-50, 50),
                 'translate_y': (-50, 50),
                 'shear_x': (-15, 15),
@@ -469,3 +577,76 @@ class TransformationExplorer:
         }
         
         return constraints.get(obj_class, constraints['background'])
+    
+    def _save_intermediate_results(self, 
+                                 results: List[TransformationResult], 
+                                 phase: str, 
+                                 prefix: str = "intermediate") -> None:
+        """Save intermediate results to disk for analysis."""
+        if not results:
+            return
+            
+        # Sort by best score
+        sorted_results = sorted(results)
+        top_results = sorted_results[:min(5, len(sorted_results))]  # Save top 5
+        
+        try:
+            from PIL import Image
+            import os
+            
+            # Create output directory if needed
+            output_dir = f"{prefix}_{phase}"
+            os.makedirs(output_dir, exist_ok=True)
+            
+            print(f"\n💾 Saving {len(top_results)} best {phase} results to {output_dir}/")
+            
+            # Save each result with metadata
+            for i, result in enumerate(top_results):
+                # Save transformed image
+                img_path = f"{output_dir}/result_{i+1}_score_{result.score:.3f}.png"
+                Image.fromarray(result.transformed_image.astype('uint8')).save(img_path)
+                
+                # Save metadata
+                meta_path = f"{output_dir}/result_{i+1}_metadata.txt"
+                with open(meta_path, 'w') as f:
+                    f.write(f"Score: {result.score:.6f}\n")
+                    f.write(f"Quality Score: {result.quality_score:.6f}\n")
+                    f.write(f"Constraint Violation: {result.constraint_violation:.6f}\n")
+                    f.write(f"Transformation Parameters:\n")
+                    f.write(f"  Rotation: {result.params.rotation:.2f}°\n")
+                    f.write(f"  Scale X: {result.params.scale_x:.3f}\n")
+                    f.write(f"  Scale Y: {result.params.scale_y:.3f}\n")
+                    f.write(f"  Translate X: {result.params.translate_x:.1f}px\n")
+                    f.write(f"  Translate Y: {result.params.translate_y:.1f}px\n")
+                    if abs(result.params.shear_x) > 1e-6:
+                        f.write(f"  Shear X: {result.params.shear_x:.2f}°\n")
+                    if abs(result.params.shear_y) > 1e-6:
+                        f.write(f"  Shear Y: {result.params.shear_y:.2f}°\n")
+                    if abs(result.params.barrel_k1) > 1e-6:
+                        f.write(f"  Barrel K1: {result.params.barrel_k1:.4f}\n")
+                    if abs(result.params.wave_amp_x) > 1e-6:
+                        f.write(f"  Wave Amp X: {result.params.wave_amp_x:.2f}\n")
+                    f.write(f"\nDetails: {result.details}\n")
+            
+            # Create summary
+            summary_path = f"{output_dir}/summary.txt"
+            with open(summary_path, 'w') as f:
+                f.write(f"Intermediate Results Summary - {phase.title()} Phase\n")
+                f.write(f"{'='*50}\n\n")
+                f.write(f"Total results processed: {len(results)}\n")
+                f.write(f"Results saved: {len(top_results)}\n")
+                f.write(f"Best score: {sorted_results[0].score:.6f}\n")
+                f.write(f"Worst score in top 5: {sorted_results[min(4, len(sorted_results)-1)].score:.6f}\n\n")
+                
+                f.write("Top Results:\n")
+                for i, result in enumerate(top_results):
+                    f.write(f"{i+1:2d}. Score: {result.score:.6f}, "
+                           f"Quality: {result.quality_score:.3f}, "
+                           f"Rotation: {result.params.rotation:+6.1f}°, "
+                           f"Scale: {result.params.scale_x:.2f}x\n")
+            
+            print(f"✅ Saved results to {output_dir}/ (best score: {sorted_results[0].score:.3f})")
+            
+        except Exception as e:
+            print(f"⚠️  Warning: Could not save intermediate results: {e}")
+            pass  # Don't fail the search if saving fails

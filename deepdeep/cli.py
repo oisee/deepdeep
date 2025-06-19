@@ -35,7 +35,7 @@ def save_image(image: np.ndarray, output_path: str):
         sys.exit(1)
 
 
-def process_image(image_path: str, mode: str, output_path: str, interactive: bool = False, quality: str = 'medium'):
+def process_image(image_path: str, mode: str, output_path: str, interactive: bool = False, quality: str = 'medium', save_intermediate: bool = False, single_object: bool = False):
     """Process a single image through the SpectrumAI pipeline."""
     print(f"Processing {image_path} in {mode} mode...")
     
@@ -44,12 +44,18 @@ def process_image(image_path: str, mode: str, output_path: str, interactive: boo
     print(f"Loaded image: {image.shape}")
     
     # Initialize components
-    optimizer = ObjectBasedOptimizer(mode)
-    recomposer = RecompositionEngine(mode)
     evaluator = ConstraintEvaluator(mode)
     
-    # Segment and optimize objects
-    workspaces = optimizer.segment_and_optimize(image)
+    # Check if single-object mode is requested
+    if single_object:
+        print("🎯 Single-object mode: Processing entire image as one object...")
+        workspaces = []
+    else:
+        optimizer = ObjectBasedOptimizer(mode)
+        recomposer = RecompositionEngine(mode)
+        
+        # Segment and optimize objects
+        workspaces = optimizer.segment_and_optimize(image)
     
     if not workspaces:
         print("No objects detected, processing as single object...")
@@ -59,15 +65,50 @@ def process_image(image_path: str, mode: str, output_path: str, interactive: boo
         
         # Use quality-based configuration
         print(f"Using {quality} quality level")
-        results = explorer.explore_transformations(image, fine_grain_level=quality)
+        
+        # Create search configuration with interactive and intermediate options
+        search_config = explorer._get_default_search_config(quality)
+        
+        if save_intermediate:
+            search_config['save_intermediate'] = True
+            # Use input filename (without extension) as prefix for intermediate outputs
+            base_name = Path(image_path).stem
+            search_config['output_prefix'] = f"{base_name}_intermediate"
+            print("💾 Intermediate result saving enabled")
+        
+        if interactive:
+            from .utils.interactive import InteractiveHandler
+            search_config['interactive_handler'] = InteractiveHandler()
+            print("🎛️  Interactive mode enabled - Press ESC during search for menu")
+        
+        results = explorer.explore_transformations(image, search_config=search_config, fine_grain_level=quality)
         
         if results:
             best_result = results[0]
-            save_image(best_result.transformed_image, output_path)
-            print(f"Best score: {best_result.score:.3f}")
+            
+            # Generate both outputs
+            transformed_original = best_result.transformed_image
+            zx_quantized = evaluator._quantize_to_palette(transformed_original)
+            
+            # Save transformed original (shows geometric transformation)
+            base_path = output_path.replace('.png', '')
+            transformed_path = f"{base_path}_transformed.png"
+            save_image(transformed_original, transformed_path)
+            print(f"Saved transformed original to: {transformed_path}")
+            
+            # Save ZX Spectrum quantized version (final result)
+            zx_path = f"{base_path}_spectrum.png"
+            save_image(zx_quantized, zx_path)
+            print(f"Saved ZX Spectrum version to: {zx_path}")
+            
+            # Also save as main output (ZX version)
+            save_image(zx_quantized, output_path)
+            print(f"Best transformation score: {best_result.score:.3f}")
+            print(f"Quality score: {best_result.quality_score:.3f}")
         else:
-            print("No improvements found, saving original")
-            save_image(image, output_path)
+            print("No improvements found, saving quantized original")
+            zx_quantized = evaluator._quantize_to_palette(image)
+            save_image(zx_quantized, output_path)
         
         return
     
@@ -94,13 +135,29 @@ def process_image(image_path: str, mode: str, output_path: str, interactive: boo
     print("\nRecomposing image...")
     result = recomposer.auto_compose(workspaces, selected_variants)
     
+    # Generate both outputs for recomposed result
+    recomposed_original = result.canvas
+    recomposed_zx = evaluator._quantize_to_palette(recomposed_original)
+    
+    # Save transformed recomposition (shows object transformations)
+    base_path = output_path.replace('.png', '')
+    transformed_path = f"{base_path}_transformed.png"
+    save_image(recomposed_original, transformed_path)
+    print(f"Saved transformed recomposition to: {transformed_path}")
+    
+    # Save ZX Spectrum quantized version (final result)
+    zx_path = f"{base_path}_spectrum.png"
+    save_image(recomposed_zx, zx_path)
+    print(f"Saved ZX Spectrum version to: {zx_path}")
+    
+    # Also save as main output (ZX version)
+    save_image(recomposed_zx, output_path)
+    
     # Evaluate final result
     print(f"\nFinal Results:")
     print(f"Quality score: {result.quality_score:.3f}")
     print(f"Constraint score: {result.constraint_score:.3f}")
-    
-    # Save result
-    save_image(result.canvas, output_path)
+    print(f"Color palette: ZX Spectrum (8 standard + 8 bright colors)")
 
 
 def interactive_selection(workspaces):
@@ -162,8 +219,12 @@ def main():
                        default="standard", help="Target ZX Spectrum mode")
     parser.add_argument("--quality", "-q", choices=["fast", "medium", "fine", "ultra_fine"],
                        default="medium", help="Search quality level (fast=quick, ultra_fine=thorough)")
+    parser.add_argument("--save-intermediate", action="store_true",
+                       help="Save intermediate search results (coarse, fine, etc.) to disk")
+    parser.add_argument("--single-object", action="store_true",
+                       help="Skip object detection and process entire image as single object (faster)")
     parser.add_argument("--interactive", action="store_true", 
-                       help="Interactive variant selection")
+                       help="Enable interactive mode - press ESC during search for menu")
     parser.add_argument("--demo", action="store_true", 
                        help="Run demo with generated test image")
     
@@ -187,7 +248,7 @@ def main():
         print(f"Error: Input file {args.input} does not exist")
         sys.exit(1)
     
-    process_image(args.input, args.mode, args.output, args.interactive)
+    process_image(args.input, args.mode, args.output, args.interactive, args.quality, args.save_intermediate, args.single_object)
 
 
 if __name__ == "__main__":

@@ -46,15 +46,24 @@ python -m deepdeep.cli --demo
 
 ### Convert Your Images
 ```bash
-# Basic conversion
+# Basic conversion (medium quality)
 python -m deepdeep.cli --input image.jpg --mode standard
 
-# Specify output path
-python -m deepdeep.cli --input image.jpg --output result.png --mode gigascreen
+# Fast conversion for quick preview
+python -m deepdeep.cli --input image.jpg --quality fast
 
-# Interactive mode (select variants for each object)
-python -m deepdeep.cli --input image.jpg --mode mc8x4 --interactive
+# High quality conversion
+python -m deepdeep.cli --input image.jpg --quality fine --output result.png
+
+# Interactive mode with quality control
+python -m deepdeep.cli --input image.jpg --mode gigascreen --quality medium --interactive
 ```
+
+### Quality Levels
+- **`--quality fast`**: ~2 seconds, good for previews
+- **`--quality medium`**: ~30 seconds, balanced quality/speed (default)  
+- **`--quality fine`**: ~2-5 minutes, high quality results
+- **`--quality ultra_fine`**: ~10-20 minutes, maximum quality
 
 ## 🧪 Running Tests
 
