@@ -43,27 +43,47 @@ class InteractiveHandler:
                 pass
     
     def check_for_interactive_trigger(self) -> Optional[InteractiveChoice]:
-        """Check for interactive trigger (file-based or key-based)."""
+        """Check for interactive trigger (file-based is most reliable)."""
         import os
+        import signal
         
-        # Check for trigger file (more reliable)
+        # Check for trigger file (most reliable method)
         if os.path.exists('menu.trigger'):
             os.remove('menu.trigger')  # Remove trigger file
             return self._show_interactive_menu()
+        
+        # Check for .pause file (alternative trigger)  
+        if os.path.exists('.pause'):
+            os.remove('.pause')
+            return self._show_interactive_menu()
             
+        # Try keyboard input (less reliable with progress bars)
         if not self.enabled or not sys.stdin.isatty():
             return None
             
-        # Check if input is available (non-blocking)
-        if select.select([sys.stdin], [], [], 0) == ([sys.stdin], [], []):
+        try:
+            # Very quick non-blocking check
+            import fcntl
+            import os
+            
+            # Make stdin non-blocking
+            fd = sys.stdin.fileno()
+            flags = fcntl.fcntl(fd, fcntl.F_GETFL)
+            fcntl.fcntl(fd, fcntl.F_SETFL, flags | os.O_NONBLOCK)
+            
             try:
-                # Simple single character check
                 char = sys.stdin.read(1)
-                # Check for common trigger characters
-                if char.lower() in ['m', 'i', '?']:  # m=menu, i=interactive, ?=help
+                if char and char.lower() in ['m', 'i', '?', '\n', '\r']:
                     return self._show_interactive_menu()
-            except:
-                pass
+            except BlockingIOError:
+                pass  # No input available
+            finally:
+                # Restore blocking mode
+                fcntl.fcntl(fd, fcntl.F_SETFL, flags)
+                
+        except (ImportError, OSError):
+            # Fallback for systems without fcntl
+            pass
         
         return None
     
@@ -81,7 +101,7 @@ class InteractiveHandler:
         print("  [x] Exit and save current best results")
         print("  [k] Skip current phase")
         print("="*50)
-        print("💡 Tip: During search, create file 'menu.trigger' to open this menu")
+        print("💡 Tip: During search, run 'touch menu.trigger' or 'touch .pause' in another terminal")
         
         while True:
             try:

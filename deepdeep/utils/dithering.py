@@ -3,7 +3,8 @@ Advanced dithering algorithms for better color mixing and transitions.
 """
 
 import numpy as np
-from typing import List, Tuple, Optional
+import cv2
+from typing import List, Tuple, Optional, Dict, Any
 from enum import Enum
 
 
@@ -340,6 +341,82 @@ class ZXDithering:
         result[detail_mask] = detail_areas[detail_mask]
         
         return result.astype(np.uint8)
+    
+    def analyze_color_perception(self, dithered_image: np.ndarray, scales: List[float] = [1.0, 0.5, 0.25]) -> Dict[str, Any]:
+        """
+        Analyze color perception at different scales to validate dithering effectiveness.
+        
+        Args:
+            dithered_image: Dithered image to analyze
+            scales: List of scale factors for analysis
+            
+        Returns:
+            Dictionary with perception analysis results
+        """
+        h, w = dithered_image.shape[:2]
+        analysis = {
+            'scales': {},
+            'color_mixing_effectiveness': 0.0,
+            'perceived_colors': [],
+            'summary': ''
+        }
+        
+        for scale in scales:
+            if scale == 1.0:
+                scaled_image = dithered_image.copy()
+            else:
+                # Downscale image to simulate viewing distance
+                new_h, new_w = int(h * scale), int(w * scale)
+                scaled_image = cv2.resize(dithered_image, (new_w, new_h), interpolation=cv2.INTER_AREA)
+                # Upscale back for consistent analysis
+                scaled_image = cv2.resize(scaled_image, (w, h), interpolation=cv2.INTER_LINEAR)
+            
+            # Analyze perceived colors
+            unique_colors = np.unique(scaled_image.reshape(-1, 3), axis=0)
+            num_perceived_colors = len(unique_colors)
+            
+            # Calculate color distribution
+            pixels = scaled_image.reshape(-1, 3)
+            color_counts = {}
+            for color in unique_colors:
+                mask = np.all(pixels == color, axis=1)
+                count = np.sum(mask)
+                color_counts[tuple(color)] = count
+            
+            # Calculate color mixing score
+            if scale < 1.0:
+                # At smaller scales, successful dithering creates intermediate colors
+                # that weren't in the original palette
+                original_palette_colors = set(tuple(c) for c in self.zx_palette)
+                perceived_colors = set(color_counts.keys())
+                mixed_colors = perceived_colors - original_palette_colors
+                mixing_score = len(mixed_colors) / max(len(perceived_colors), 1)
+            else:
+                mixing_score = 0.0  # Full scale shows original dithering
+            
+            analysis['scales'][f'x{scale}'] = {
+                'perceived_colors': num_perceived_colors,
+                'color_distribution': color_counts,
+                'mixing_score': mixing_score,
+                'dominant_colors': sorted(color_counts.items(), key=lambda x: x[1], reverse=True)[:5]
+            }
+        
+        # Overall effectiveness
+        mixing_scores = [analysis['scales'][f'x{scale}']['mixing_score'] for scale in scales if scale < 1.0]
+        analysis['color_mixing_effectiveness'] = np.mean(mixing_scores) if mixing_scores else 0.0
+        
+        # Generate summary
+        full_scale_colors = analysis['scales']['x1.0']['perceived_colors']
+        half_scale_colors = analysis['scales']['x0.5']['perceived_colors'] if 0.5 in scales else full_scale_colors
+        quarter_scale_colors = analysis['scales']['x0.25']['perceived_colors'] if 0.25 in scales else full_scale_colors
+        
+        analysis['summary'] = (
+            f"Color perception: {full_scale_colors} colors at full scale, "
+            f"{half_scale_colors} at half scale, {quarter_scale_colors} at quarter scale. "
+            f"Mixing effectiveness: {analysis['color_mixing_effectiveness']:.2f}"
+        )
+        
+        return analysis
 
 
 def create_color_transition_dither(start_color: Tuple[int, int, int], 

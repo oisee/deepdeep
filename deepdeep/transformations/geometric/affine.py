@@ -65,8 +65,7 @@ class TransformParams:
         """Create a deep copy of the parameters."""
         return TransformParams(
             rotation=self.rotation,
-            scale_x=self.scale_x,
-            scale_y=self.scale_y,
+            scale=self.scale,
             translate_x=self.translate_x,
             translate_y=self.translate_y,
             shear_x=self.shear_x,
@@ -78,7 +77,11 @@ class TransformParams:
             wave_amp_x=self.wave_amp_x,
             wave_freq_x=self.wave_freq_x,
             wave_amp_y=self.wave_amp_y,
-            wave_freq_y=self.wave_freq_y
+            wave_freq_y=self.wave_freq_y,
+            spherical_strength=self.spherical_strength,
+            twist_angle=self.twist_angle,
+            ripple_amplitude=self.ripple_amplitude,
+            ripple_frequency=self.ripple_frequency
         )
 
 

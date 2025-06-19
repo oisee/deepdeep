@@ -299,10 +299,13 @@ class TransformationExplorer:
         
         # Get interactive handler if configured
         interactive_handler = config.get('interactive_handler')
+        iteration_count = 0
         
         for rot, scale, tx, ty in param_combinations_progress:
-            # Check for interactive trigger
-            if interactive_handler:
+            iteration_count += 1
+            
+            # Check for interactive trigger (only every 5 iterations to reduce overhead)
+            if interactive_handler and iteration_count % 5 == 0:
                 choice = interactive_handler.check_for_interactive_trigger()
                 if choice == InteractiveChoice.EXIT:
                     print(f"\n🚪 User requested exit from coarse search. Saving {len(results)} results...")
