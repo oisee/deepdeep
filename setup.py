@@ -4,9 +4,9 @@ with open("CLAUDE.md", "r", encoding="utf-8") as fh:
     long_description = fh.read()
 
 setup(
-    name="spectrumAI",
+    name="deepdeep",
     version="0.1.0",
-    author="SpectrumAI Team",
+    author="DeepDeep Team",
     description="Next-Generation ZX Spectrum Image Converter",
     long_description=long_description,
     long_description_content_type="text/markdown",
@@ -52,7 +52,7 @@ setup(
     },
     entry_points={
         "console_scripts": [
-            "spectrumAI=spectrumAI.cli:main",
+            "deepdeep=deepdeep.cli:main",
         ],
     },
 )

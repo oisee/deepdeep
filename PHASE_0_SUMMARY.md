@@ -70,7 +70,7 @@ $ python -m pytest tests/ -v
 
 ### Demo Performance
 ```bash
-$ python -m spectrumAI.cli --demo
+$ python -m deepdeep.cli --demo
 Processing demo_input.png in standard mode...
 Found 3 objects
 Quality score: 0.989, Constraint score: 0.011
@@ -118,7 +118,7 @@ This represents a fundamental advance over traditional color quantization approa
 
 ### Code Structure
 ```
-spectrumAI/
+deepdeep/
 ├── transformations/       # Core innovation - transformation framework
 ├── segmentation/         # Object detection and extraction  
 ├── research/             # Ready for Phase 1 algorithms
@@ -150,4 +150,4 @@ The transformation-first approach is **proven and working** - ready to enhance w
 
 ---
 
-*Phase 0 completed successfully - SpectrumAI is now the most advanced ZX Spectrum image converter ever created.*
+*Phase 0 completed successfully - DeepDeep is now the most advanced ZX Spectrum image converter ever created.*

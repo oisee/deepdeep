@@ -1,11 +1,11 @@
-# SpectrumAI: Next-Generation ZX Spectrum Image Converter
+# DeepDeep: Next-Generation ZX Spectrum Image Converter
 
 [![Python 3.9+](https://img.shields.io/badge/python-3.9+-blue.svg)](https://www.python.org/downloads/)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
-[![Phase 0](https://img.shields.io/badge/Phase_0-Complete-brightgreen.svg)](https://github.com/spectrumAI/spectrumAI)
+[![Phase 0](https://img.shields.io/badge/Phase_0-Complete-brightgreen.svg)](https://github.com/deepdeep/deepdeep)
 [![Tests](https://img.shields.io/badge/tests-14%20passing-brightgreen.svg)](tests/)
 
-SpectrumAI revolutionizes image-to-ZX Spectrum conversion using transformation space exploration, perceptual modeling, and AI-powered optimization.
+DeepDeep revolutionizes image-to-ZX Spectrum conversion using transformation space exploration, perceptual modeling, and AI-powered optimization.
 
 > **🎯 Phase 0 Complete!** Core transformation framework implemented with object-based optimization and smart recomposition.
 
@@ -41,19 +41,19 @@ pip install -e .
 ### Demo Mode
 ```bash
 # Run built-in demo with generated test image
-python -m spectrumAI.cli --demo
+python -m deepdeep.cli --demo
 ```
 
 ### Convert Your Images
 ```bash
 # Basic conversion
-python -m spectrumAI.cli --input image.jpg --mode standard
+python -m deepdeep.cli --input image.jpg --mode standard
 
 # Specify output path
-python -m spectrumAI.cli --input image.jpg --output result.png --mode gigascreen
+python -m deepdeep.cli --input image.jpg --output result.png --mode gigascreen
 
 # Interactive mode (select variants for each object)
-python -m spectrumAI.cli --input image.jpg --mode mc8x4 --interactive
+python -m deepdeep.cli --input image.jpg --mode mc8x4 --interactive
 ```
 
 ## 🧪 Running Tests
@@ -69,7 +69,7 @@ python -m pytest tests/test_transformations.py -v
 ## 🏗️ Architecture
 
 ```
-spectrumAI/
+deepdeep/
 ├── transformations/       # Core transformation engine
 │   ├── geometric/         # Affine, perspective, non-linear transforms
 │   ├── search/           # Exploration strategies and constraints
@@ -114,7 +114,7 @@ spectrumAI/
 
 **Phase 0 Demo Output:**
 ```bash
-$ python -m spectrumAI.cli --demo
+$ python -m deepdeep.cli --demo
 Demo mode: Creating test image...
 Processing demo_input.png in standard mode...
 Found 3 objects
@@ -161,7 +161,7 @@ MIT License - see LICENSE file for details.
 
 ## 🔗 Research Goals
 
-SpectrumAI aims to advance the state-of-the-art in constraint satisfaction for retro graphics by:
+DeepDeep aims to advance the state-of-the-art in constraint satisfaction for retro graphics by:
 - Proving transformation exploration improves results vs. direct conversion
 - Developing perceptual models for human vision of dithered/flickering displays
 - Creating differentiable rendering pipelines for gradient-based optimization

@@ -1,5 +1,5 @@
 """
-Command-line interface for SpectrumAI.
+Command-line interface for DeepDeep.
 """
 
 import argparse
@@ -162,7 +162,7 @@ def demo_mode():
 
 def main():
     """Main CLI entry point."""
-    parser = argparse.ArgumentParser(description="SpectrumAI: Next-Generation ZX Spectrum Image Converter")
+    parser = argparse.ArgumentParser(description="DeepDeep: Next-Generation ZX Spectrum Image Converter")
     
     parser.add_argument("--input", "-i", type=str, help="Input image path")
     parser.add_argument("--output", "-o", type=str, help="Output image path")

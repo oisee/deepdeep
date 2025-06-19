@@ -1,4 +1,4 @@
-# SpectrumAI .gitignore
+# DeepDeep .gitignore
 
 # ===== LOCAL CONFIGURATION PROTECTION =====
 # Protect Claude Code configuration and local development files
@@ -268,7 +268,7 @@ __pycache__/
 *.cprof
 
 # ===== PROJECT SPECIFIC =====
-# SpectrumAI specific ignores
+# DeepDeep specific ignores
 models/pretrained/*.pt        # Don't commit large pretrained models
 models/custom/experiments/    # Don't commit experimental models
 interface/temp/               # Don't commit temporary UI files
@@ -291,8 +291,11 @@ performance_logs/
 !LICENSE
 !.github/
 !tests/
-!spectrumAI/
+!deepdeep/
 !docs/
 
 # Allow empty directories with .gitkeep
 !.gitkeep
+
+# Force include main package directory
+!deepdeep/

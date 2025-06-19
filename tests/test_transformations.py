@@ -2,9 +2,9 @@
 
 import pytest
 import numpy as np
-from spectrumAI.transformations.geometric.affine import TransformParams, TransformationEngine
-from spectrumAI.transformations.search.explorer import TransformationExplorer
-from spectrumAI.transformations.search.constraints import ConstraintEvaluator
+from deepdeep.transformations.geometric.affine import TransformParams, TransformationEngine
+from deepdeep.transformations.search.explorer import TransformationExplorer
+from deepdeep.transformations.search.constraints import ConstraintEvaluator
 
 
 class TestTransformParams:
