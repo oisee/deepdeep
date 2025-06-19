@@ -35,7 +35,7 @@ def save_image(image: np.ndarray, output_path: str):
         sys.exit(1)
 
 
-def process_image(image_path: str, mode: str, output_path: str, interactive: bool = False):
+def process_image(image_path: str, mode: str, output_path: str, interactive: bool = False, quality: str = 'medium'):
     """Process a single image through the SpectrumAI pipeline."""
     print(f"Processing {image_path} in {mode} mode...")
     
@@ -57,17 +57,9 @@ def process_image(image_path: str, mode: str, output_path: str, interactive: boo
         from .transformations.search.explorer import TransformationExplorer
         explorer = TransformationExplorer(mode)
         
-        # Use limited search for speed
-        search_config = {
-            'max_results': 10,
-            'enable_fine_search': True,
-            'enable_nonlinear': False,
-            'coarse': {
-                'max_combinations': 50
-            }
-        }
-        
-        results = explorer.explore_transformations(image, search_config)
+        # Use quality-based configuration
+        print(f"Using {quality} quality level")
+        results = explorer.explore_transformations(image, fine_grain_level=quality)
         
         if results:
             best_result = results[0]
@@ -168,6 +160,8 @@ def main():
     parser.add_argument("--output", "-o", type=str, help="Output image path")
     parser.add_argument("--mode", "-m", choices=["standard", "gigascreen", "mc8x4"], 
                        default="standard", help="Target ZX Spectrum mode")
+    parser.add_argument("--quality", "-q", choices=["fast", "medium", "fine", "ultra_fine"],
+                       default="medium", help="Search quality level (fast=quick, ultra_fine=thorough)")
     parser.add_argument("--interactive", action="store_true", 
                        help="Interactive variant selection")
     parser.add_argument("--demo", action="store_true", 

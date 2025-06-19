@@ -6,8 +6,33 @@ from typing import List, Dict, Any, Tuple, Optional, Iterator
 from dataclasses import dataclass
 import numpy as np
 import itertools
+import time
 from ..geometric.affine import TransformParams, TransformationEngine
 from .constraints import ConstraintEvaluator
+
+try:
+    from tqdm import tqdm
+    HAS_TQDM = True
+except ImportError:
+    HAS_TQDM = False
+    
+    # Simple progress bar fallback
+    def tqdm(iterable, desc="", total=None, disable=False):
+        if disable or total is None:
+            return iterable
+        
+        def progress_iter():
+            start_time = time.time()
+            for i, item in enumerate(iterable):
+                if i % max(1, total // 20) == 0:  # Update every 5%
+                    elapsed = time.time() - start_time
+                    rate = (i + 1) / elapsed if elapsed > 0 else 0
+                    percent = (i + 1) / total * 100
+                    print(f"\r{desc}: {percent:.1f}% ({i+1}/{total}) [{rate:.1f}it/s]", end="", flush=True)
+                yield item
+            print()  # New line when complete
+        
+        return progress_iter()
 
 
 @dataclass
@@ -35,19 +60,21 @@ class TransformationExplorer:
         
     def explore_transformations(self, 
                               image: np.ndarray,
-                              search_config: Optional[Dict[str, Any]] = None) -> List[TransformationResult]:
+                              search_config: Optional[Dict[str, Any]] = None,
+                              fine_grain_level: str = 'medium') -> List[TransformationResult]:
         """
         Generate and evaluate transformation variants.
         
         Args:
             image: Input image (H, W, 3)
             search_config: Search configuration parameters
+            fine_grain_level: 'fast', 'medium', 'fine', 'ultra_fine'
             
         Returns:
             List of TransformationResult sorted by score (best first)
         """
         if search_config is None:
-            search_config = self._get_default_search_config()
+            search_config = self._get_default_search_config(fine_grain_level)
         
         results = []
         
@@ -79,9 +106,85 @@ class TransformationExplorer:
         results.sort()
         return results[:search_config.get('max_results', 50)]
     
-    def _get_default_search_config(self) -> Dict[str, Any]:
-        """Get default search configuration."""
-        return {
+    def _get_default_search_config(self, fine_grain_level: str = 'medium') -> Dict[str, Any]:
+        """
+        Get default search configuration with configurable fine-grain level.
+        
+        Args:
+            fine_grain_level: 'fast', 'medium', 'fine', 'ultra_fine'
+        """
+        # Define fine-grain level configurations
+        fine_configs = {
+            'fast': {
+                'enable_fine_search': False,
+                'enable_nonlinear': False,
+                'max_results': 10,
+                'coarse': {
+                    'rotation_step': 10,
+                    'scale_step': 0.2,
+                    'translate_step': 16,
+                    'max_combinations': 20
+                }
+            },
+            'medium': {
+                'enable_fine_search': True,
+                'enable_nonlinear': False,
+                'max_results': 25,
+                'fine_candidates': 5,
+                'coarse': {
+                    'rotation_step': 5,
+                    'scale_step': 0.1,
+                    'translate_step': 8,
+                    'max_combinations': 50
+                },
+                'fine': {
+                    'rotation_step': 2,
+                    'scale_step': 0.05,
+                    'translate_step': 4,
+                    'search_radius': 2,
+                }
+            },
+            'fine': {
+                'enable_fine_search': True,
+                'enable_nonlinear': True,
+                'max_results': 50,
+                'fine_candidates': 10,
+                'nonlinear_candidates': 5,
+                'coarse': {
+                    'rotation_step': 5,
+                    'scale_step': 0.1,
+                    'translate_step': 8,
+                    'max_combinations': 100
+                },
+                'fine': {
+                    'rotation_step': 0.5,
+                    'scale_step': 0.01,
+                    'translate_step': 1,
+                    'search_radius': 3,
+                }
+            },
+            'ultra_fine': {
+                'enable_fine_search': True,
+                'enable_nonlinear': True,
+                'max_results': 100,
+                'fine_candidates': 15,
+                'nonlinear_candidates': 8,
+                'coarse': {
+                    'rotation_step': 2,
+                    'scale_step': 0.05,
+                    'translate_step': 4,
+                    'max_combinations': 200
+                },
+                'fine': {
+                    'rotation_step': 0.25,
+                    'scale_step': 0.005,
+                    'translate_step': 0.5,
+                    'search_radius': 4,
+                }
+            }
+        }
+        
+        base_config = {
             'max_results': 50,
             'enable_fine_search': True,
             'enable_nonlinear': True,
@@ -94,6 +197,7 @@ class TransformationExplorer:
                 'rotation_range': (-15, 15),
                 'scale_range': (0.8, 1.2),
                 'translate_range': (-20, 20),
+                'max_combinations': 1000,
             },
             'fine': {
                 'rotation_step': 0.5,
@@ -102,6 +206,18 @@ class TransformationExplorer:
                 'search_radius': 3,  # steps around best coarse result
             }
         }
+        
+        # Override with fine-grain specific settings
+        if fine_grain_level in fine_configs:
+            level_config = fine_configs[fine_grain_level]
+            # Deep merge configurations
+            for key, value in level_config.items():
+                if isinstance(value, dict) and key in base_config:
+                    base_config[key].update(value)
+                else:
+                    base_config[key] = value
+        
+        return base_config
     
     def _coarse_search(self, image: np.ndarray, config: Dict[str, Any]) -> List[TransformationResult]:
         """Coarse grid search across transformation space."""
@@ -140,13 +256,14 @@ class TransformationExplorer:
             indices = np.linspace(0, len(param_combinations) - 1, max_combinations, dtype=int)
             param_combinations = [param_combinations[i] for i in indices]
         
-        print(f"Testing {len(param_combinations)} parameter combinations...")
+        # Evaluate each combination with progress bar
+        param_combinations_progress = tqdm(
+            param_combinations, 
+            desc=f"Coarse search ({len(param_combinations)} combinations)",
+            disable=len(param_combinations) < 10
+        )
         
-        # Evaluate each combination
-        for i, (rot, sx, sy, tx, ty) in enumerate(param_combinations):
-            if i % 100 == 0:
-                print(f"Progress: {i}/{len(param_combinations)}")
-                
+        for rot, sx, sy, tx, ty in param_combinations_progress:
             params = TransformParams(
                 rotation=rot,
                 scale_x=sx,
@@ -172,16 +289,24 @@ class TransformationExplorer:
         
         radius = config.get('search_radius', 3)
         
+        # Collect all fine variations first to show total progress
+        all_fine_params = []
         for coarse_result in coarse_results:
             base_params = coarse_result.params
-            
-            # Generate fine parameter variations around base
             fine_params = self._generate_fine_variations(base_params, config, radius)
-            
-            for params in fine_params:
-                result = self._evaluate_transformation(image, params)
-                if result is not None:
-                    results.append(result)
+            all_fine_params.extend(fine_params)
+        
+        # Process with progress bar
+        fine_params_progress = tqdm(
+            all_fine_params, 
+            desc=f"Fine search ({len(all_fine_params)} variations)",
+            disable=len(all_fine_params) < 10
+        )
+        
+        for params in fine_params_progress:
+            result = self._evaluate_transformation(image, params)
+            if result is not None:
+                results.append(result)
         
         return results
     

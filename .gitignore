@@ -1,5 +1,5 @@
 # DeepDeep .gitignore
-
+demo*converted*.png
 # ===== LOCAL CONFIGURATION PROTECTION =====
 # Protect Claude Code configuration and local development files
 CLAUDE.md                      # Claude Code project configuration - KEEP LOCAL ONLY
