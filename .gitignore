@@ -1,6 +1,5 @@
-demo_*/
-demo_*/*
-
+_out/
+_out/*
 # DeepDeep .gitignore
 demo*converted*.png
 # ===== LOCAL CONFIGURATION PROTECTION =====

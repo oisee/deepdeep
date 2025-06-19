@@ -428,9 +428,11 @@ def process_image(image_path: str, mode: str, output_path: str, interactive: boo
         
         if save_intermediate:
             search_config['save_intermediate'] = True
-            # Use input filename (without extension) as prefix for intermediate outputs
+            # Use _out/_intermediate folder for intermediate outputs
             base_name = Path(image_path).stem
-            search_config['output_prefix'] = f"{base_name}_intermediate"
+            intermediate_dir = Path("_out") / "_intermediate"
+            intermediate_dir.mkdir(parents=True, exist_ok=True)
+            search_config['output_prefix'] = str(intermediate_dir / f"{base_name}_intermediate")
             print("💾 Intermediate result saving enabled")
         
         if interactive:
@@ -610,7 +612,7 @@ def main():
     parser = argparse.ArgumentParser(description="DeepDeep: Next-Generation ZX Spectrum Image Converter")
     
     parser.add_argument("--input", "-i", type=str, help="Input image path")
-    parser.add_argument("--output", "-o", type=str, help="Output image path")
+    parser.add_argument("--output", "-o", type=str, help="Output image path or filename stem (default: _out/[input_stem].spectrum_[mode].png)")
     parser.add_argument("--mode", "-m", choices=["standard", "gigascreen", "mc8x4"], 
                        default="standard", help="Target ZX Spectrum mode")
     parser.add_argument("--quality", "-q", choices=["fast", "medium", "fine", "ultra_fine"],
@@ -654,9 +656,23 @@ def main():
         sys.exit(1)
     
     if not args.output:
-        # Generate output filename
+        # Generate output filename in _out folder
         input_path = Path(args.input)
-        args.output = str(input_path.with_suffix(f".spectrum_{args.mode}{input_path.suffix}"))
+        output_dir = Path("_out")
+        output_dir.mkdir(exist_ok=True)
+        args.output = str(output_dir / f"{input_path.stem}.spectrum_{args.mode}{input_path.suffix}")
+    else:
+        # Check if output is just a stem (no path separators or extension)
+        output_path = Path(args.output)
+        if '/' not in args.output and '\\' not in args.output and '.' not in args.output:
+            # It's just a stem, use _out folder and add extension
+            input_path = Path(args.input)
+            output_dir = Path("_out")
+            output_dir.mkdir(exist_ok=True)
+            args.output = str(output_dir / f"{args.output}.spectrum_{args.mode}{input_path.suffix}")
+        elif not output_path.parent.exists():
+            # Create parent directory if it doesn't exist
+            output_path.parent.mkdir(parents=True, exist_ok=True)
     
     if not Path(args.input).exists():
         print(f"Error: Input file {args.input} does not exist")
